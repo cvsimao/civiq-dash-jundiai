@@ -397,7 +397,7 @@ function atualizarVisualizacaoMapa() {
       const marker = L.circleMarker([e.lat, e.lng], {
         radius: 3, fillColor: '#7B95B8', color: 'transparent', opacity: 0.4, fillOpacity: 0.3,
       });
-      marker.bindPopup(`<div class="popup-escola">${e.n}</div><div class="popup-bairro">${e.b}</div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos<br><em>Sem respostas ainda</em></div>`);
+      marker.bindPopup(`<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos<br><em>Sem respostas ainda</em><\/div>`);
       pinsLayer.addLayer(marker);
     });
 
@@ -411,7 +411,7 @@ function atualizarVisualizacaoMapa() {
         radius: raio, fillColor: corNota(iap), color: '#fff',
         weight: temDado ? 1.5 : 0.5, opacity: temDado ? 0.9 : 0.4, fillOpacity: temDado ? 0.85 : 0.25,
       });
-      marker.bindPopup(temDado ? popupEscola(e, s) : `<div class="popup-escola">${e.n}</div><div class="popup-bairro">${e.b}</div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores<br><em>Sem respostas</em></div>`);
+      marker.bindPopup(temDado ? popupEscola(e, s) : `<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores<br><em>Sem respostas</em><\/div>`);
       pinsLayer.addLayer(marker);
     });
   }
@@ -419,10 +419,10 @@ function atualizarVisualizacaoMapa() {
 
 function popupEscola(e, s) {
   const cor = corNota(s.iapPonderado);
-  return `<div class="popup-escola">🏫 ${e.n}</div>
-<div class="popup-bairro">📍 ${e.b}</div>
-<div class="popup-nota" style="color:${cor}">${s.iapPonderado.toFixed(1)}<span style="font-size:13px;color:#7B95B8"> /10</span></div>
-<div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos · ${s.n} resp.</div>`;
+  return `<div class="popup-escola">🏫 ${e.n}<\/div>
+<div class="popup-bairro">📍 ${e.b}<\/div>
+<div class="popup-nota" style="color:${cor}">${s.iapPonderado.toFixed(1)}<span style="font-size:13px;color:#7B95B8"> /10<\/span><\/div>
+<div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos · ${s.n} resp.<\/div>`;
 }
 
 function parseCSV(txt) {
@@ -527,9 +527,9 @@ function render(m) {
     const pct = s!=null ? (s/10)*100 : 0;
     const cor = corTexto(s);
     return `<div class="tema-row">
-      <div class="tema-header"><div class="tema-nome">${t.nome}</div><div class="tema-nota" style="color:${cor}">${s!=null?s.toFixed(1):'—'}</div></div>
-      <div class="barra-bg"><div class="barra-fill-anim" style="width:${pct}%;background:linear-gradient(90deg,${cor}80,${cor})"></div></div>
-    </div>`;
+      <div class="tema-header"><div class="tema-nome">${t.nome}<\/div><div class="tema-nota" style="color:${cor}">${s!=null?s.toFixed(1):'—'}<\/div><\/div>
+      <div class="barra-bg"><div class="barra-fill-anim" style="width:${pct}%;background:linear-gradient(90deg,${cor}80,${cor})"><\/div><\/div>
+    <\/div>`;
   }).join('');
 
   const qvOrdem = ['Muito boa','Boa','Regular','Ruim','Muito ruim'];
@@ -537,19 +537,19 @@ function render(m) {
   const qvTot = Object.values(m.qvMap).reduce((a,b)=>a+b,0)||1;
   document.getElementById('dist-content').innerHTML = qvOrdem.map((l,i)=>{
     const q=m.qvMap[l]||0, p=((q/qvTot)*100).toFixed(1);
-    return `<div class="dist-row"><div class="dist-label">${l}</div>
-      <div class="dist-barra"><div class="dist-fill" style="width:${p}%;background:${qvCores[i]}"><span>${q>0?q:''}</span></div></div>
-      <div class="dist-pct">${p}%</div></div>`;
+    return `<div class="dist-row"><div class="dist-label">${l}<\/div>
+      <div class="dist-barra"><div class="dist-fill" style="width:${p}%;background:${qvCores[i]}"><span>${q>0?q:''}<\/span><\/div><\/div>
+      <div class="dist-pct">${p}%<\/div><\/div>`;
   }).join('');
 
   const pTot = Object.values(m.probMap).reduce((a,b)=>a+b,0)||1;
   document.getElementById('prob-content').innerHTML = Object.entries(m.probMap)
     .sort((a,b)=>b[1]-a[1]).slice(0,6)
     .map(([nome,qtd],i)=>`<div class="prob-item">
-      <div class="prob-rank">${i+1}</div>
-      <div class="prob-nome">${nome}</div>
-      <div class="prob-pct">${((qtd/pTot)*100).toFixed(0)}%</div>
-    </div>`).join('');
+      <div class="prob-rank">${i+1}<\/div>
+      <div class="prob-nome">${nome}<\/div>
+      <div class="prob-pct">${((qtd/pTot)*100).toFixed(0)}%<\/div>
+    <\/div>`).join('');
 
   const comResp = ESCOLAS
     .filter(e => m.escolaScores[e.i] && m.escolaScores[e.i].n > 0)
@@ -565,14 +565,14 @@ function render(m) {
       const corBorda = iap!=null ? corNota(iap)+'40' : 'var(--borda)';
       const bg = iap!=null ? corNota(iap)+'12' : '';
       return `<div class="ecell" style="border-color:${corBorda};background:${bg}">
-        <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdade[s]?) /,'')}</div>
-        <div class="ecell-bairro">${e.b}</div>
-        <div class="ecell-nota" style="color:${cor}">${iap!=null?iap.toFixed(1):'·'}</div>
-        ${temDado ? `<div class="ecell-n">n=${s.n}</div>` : ''}
-        <div class="ecell-apt">⚖ ${(e.apt/1000).toFixed(1)}k eleit.</div>
-      </div>`;
+        <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdade[s]?) /,'')}<\/div>
+        <div class="ecell-bairro">${e.b}<\/div>
+        <div class="ecell-nota" style="color:${cor}">${iap!=null?iap.toFixed(1):'·'}<\/div>
+        ${temDado ? `<div class="ecell-n">n=${s.n}<\/div>` : ''}
+        <div class="ecell-apt">⚖ ${(e.apt/1000).toFixed(1)}k eleit.<\/div>
+      <\/div>`;
     }).join('')
-  }</div>`;
+  }<\/div>`;
 
   atualizarVisualizacaoMapa();
 }
