@@ -446,11 +446,15 @@ function calcular(rows) {
   const total = rows.length;
   const escolaData = {};
   rows.forEach(r => {
-    const idx = parseInt(r.escola_idx);
-    const nota = parseFloat(r.nota_geral);
-    const apt = parseFloat(r.escola_apt) || 0;
-    if (isNaN(idx) || !ESCOLA_MAP[idx]) return;
-    if (!escolaData[idx]) escolaData[idx] = { notas:[], apt:apt, n:0, rows:[] };
+          let idx = parseInt(r.escola_idx);
+          if (isNaN(idx) || !ESCOLA_MAP[idx]) {
+                    const rlat = parseFloat(r.lat), rlng = parseFloat(r.lng);
+                    if (!isNaN(rlat) && !isNaN(rlng)) {
+                                let minD = Infinity;
+                                ESCOLAS.forEach(e => { const d=(e.lat-rlat)**2+(e.lng-rlng)**2; if(d<minD){minD=d;idx=e.i;} });
+                    }
+                    if (isNaN(idx) || !ESCOLA_MAP[idx]) return;
+          }if (!escolaData[idx]) escolaData[idx] = { notas:[], apt:apt, n:0, rows:[] };
     escolaData[idx].n++;
     escolaData[idx].rows.push(r);
     if (!isNaN(nota)) escolaData[idx].notas.push(nota);
