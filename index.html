@@ -584,20 +584,23 @@ function corNota(n){
 
 let carregando = false;
 async function carregar() {
-  if (carregando) return;
-  carregando = true;
-  initMapa();
-  try {
-    const resp = await fetch(CSV_URL + '&nocache=' + Date.now());
-    const txt = await resp.text();
-    const rows = parseCSV(txt);
-    if (rows.length > 0) render(calcular(rows));
-    document.getElementById('atualizado').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-  } catch(e) { console.error(e); }
-  carregando = false;
+    if (carregando) return;
+        carregando = true;
+    const timer = setTimeout(() => { carregando = false; }, 15000); // reset automático 15s
+    initMapa();
+    try {
+          const resp = await fetch(CSV_URL + '&nocache=' + Date.now());
+          const txt = await resp.text();
+          const rows = parseCSV(txt);
+          if (rows.length > 0) render(calcular(rows));
+                document.getElementById('atualizado').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    } catch(e) { console.error(e); }
+        clearTimeout(timer);
+    carregando = false;
 }
 carregar();
 setInterval(carregar, 30000);
-</script>
+// Recarrega quando a aba fica visível após ficar em background
+document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
 </body>
 </html>
