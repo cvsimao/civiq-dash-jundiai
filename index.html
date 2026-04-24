@@ -448,7 +448,7 @@ function calcular(rows) {
   rows.forEach(r => {
           let idx = parseInt(r.escola_idx);
           if (isNaN(idx) || !ESCOLA_MAP[idx]) {
-                    const rlat = parseFloat(r.lat), rlng = parseFloat(r.lng);
+                            const pf=s=>parseFloat((s||'').replace(',','.')); const rlat=pf(r.lat), rlng=pf(r.lng);
                     if (!isNaN(rlat) && !isNaN(rlng)) {
                                 let minD = Infinity;
                                 ESCOLAS.forEach(e => { const d=(e.lat-rlat)**2+(e.lng-rlng)**2; if(d<minD){minD=d;idx=e.i;} });
