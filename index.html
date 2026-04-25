@@ -598,7 +598,7 @@ async function carregar() {
         clearTimeout(timer);
     carregando = false;
 }
-carregar();
+carregar(); // v3.1
 setInterval(carregar, 30000);
 // Recarrega quando a aba fica visível após ficar em background
 document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
