@@ -344,7 +344,7 @@ function initMapa() {
 
 function corNota(n) {
   if (n==null) return '#7B95B8';
-  if (n<4) return '#FF4D6D'; if (n<6) return '#FF8A3D'; if (n<7) return '#FFD060'; return '#00E5A0';
+    if (n<=3) return '#FF4D6D'; if (n<=5) return '#FF8A3D'; if (n<=6) return '#FFD060'; return '#00E5A0';
 }
 
 function setMapMode(modo, btn) {
@@ -495,7 +495,7 @@ function calcular(rows) {
 
 function corTexto(n) {
   if(n==null) return 'rgba(255,255,255,.15)';
-  if(n<4) return '#FF4D6D'; if(n<6) return '#FF8A3D'; if(n<7) return '#FFD060'; return '#00E5A0';
+    if(n<=3) return '#FF4D6D'; if(n<=5) return '#FF8A3D'; if(n<=6) return '#FFD060'; return '#00E5A0';
 }
 
 function render(m) {
@@ -580,7 +580,7 @@ function render(m) {
 
 function corNota(n){
   if(!n&&n!==0)return'rgba(255,255,255,.06)';
-  if(n<4)return'#FF4D6D';if(n<6)return'#FF8A3D';if(n<7)return'#FFD060';return'#00E5A0';
+    if(n<=3)return'#FF4D6D';if(n<=5)return'#FF8A3D';if(n<=6)return'#FFD060';return'#00E5A0';
 }
 
 let carregando = false;
