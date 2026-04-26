@@ -218,7 +218,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
   </div>
 </div>
 
-<script>
+<script>const _lt='\x3C';
+
 const _d='\x3C/div>', _s='\x3C/span>';
   const SHEET_ID = '10N2pNmLP0eWKjuY1NySq4zMhfBz57E6YpweAQS92am4';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
@@ -398,7 +399,7 @@ function atualizarVisualizacaoMapa() {
       const marker = L.circleMarker([e.lat, e.lng], {
         radius: 3, fillColor: '#7B95B8', color: 'transparent', opacity: 0.4, fillOpacity: 0.3,
       });
-      marker.bindPopup(`<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos<br><em>Sem respostas ainda</em><\/div>`);
+      marker.bindPopup(`<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos<br><em>Sem respostas ainda${_lt}/em><\/div>`);
       pinsLayer.addLayer(marker);
     });
 
@@ -412,7 +413,7 @@ function atualizarVisualizacaoMapa() {
         radius: raio, fillColor: corNota(iap), color: '#fff',
         weight: temDado ? 1.5 : 0.5, opacity: temDado ? 0.9 : 0.4, fillOpacity: temDado ? 0.85 : 0.25,
       });
-      marker.bindPopup(temDado ? popupEscola(e, s) : `<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores<br><em>Sem respostas</em><\/div>`);
+      marker.bindPopup(temDado ? popupEscola(e, s) : `<div class="popup-escola">${e.n}<\/div><div class="popup-bairro">${e.b}<\/div><div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores<br><em>Sem respostas${_lt}/em><\/div>`);
       pinsLayer.addLayer(marker);
     });
   }
