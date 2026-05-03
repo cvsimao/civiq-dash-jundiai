@@ -220,8 +220,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 
 <script>const _lt='\x3C';
 
-const _d='\x3C/div>', _s='\x3C/span>';
-  const SHEET_ID = '10N2pNmLP0eWKjuY1NySq4zMhfBz57E6YpweAQS92am4';
+const SHEET_ID = '10N2pNmLP0eWKjuY1NySq4zMhfBz57E6YpweAQS92am4';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
 
 // 91 escolas TSE — coordenadas fixas e confiáveis
@@ -345,7 +344,7 @@ function initMapa() {
 
 function corNota(n) {
   if (n==null) return '#7B95B8';
-    if (n<=3) return '#FF4D6D'; if (n<=5) return '#FF8A3D'; if (n<=6) return '#FFD060'; return '#00E5A0';
+  if (n<=3) return '#FF4D6D'; if (n<=5) return '#FF8A3D'; if (n<=6) return '#FFD060'; return '#00E5A0';
 }
 
 function setMapMode(modo, btn) {
@@ -365,15 +364,45 @@ function atualizarVisualizacaoMapa() {
   pinsLayer.clearLayers();
 
   if (modoMapa === 'heat') {
+    // Heatmap: ponto por escola, intensidade = IAP normalizado (0-1)
+    // Escolas sem resposta ficam com intensidade 0 (não contribuem)
+    // Raio grande para manchas se encontrarem
     const pontos = ESCOLAS.map(e => {
       const s = scores[e.i];
       if (!s || s.n === 0) return null;
       const iap = s.iapPonderado;
-      const intens = iap / 10;
+      const intens = iap / 10; // 0 a 1
       return [e.lat, e.lng, intens];
     }).filter(Boolean);
 
     if (pontos.length > 0) {
+      // Usa múltiplas camadas: uma por faixa de cor para simular gradiente colorido
+      // Camada vermelha (notas baixas)
+      const pts_ruim = ESCOLAS.map(e => {
+        const s = scores[e.i];
+        if (!s || s.n===0) return null;
+        const iap = s.iapPonderado;
+        if (iap >= 5) return null; // só ruim/crítico
+        return [e.lat, e.lng, (5 - iap) / 5];
+      }).filter(Boolean);
+
+      const pts_med = ESCOLAS.map(e => {
+        const s = scores[e.i];
+        if (!s || s.n===0) return null;
+        const iap = s.iapPonderado;
+        if (iap<=4 || iap > 7) return null;
+        return [e.lat, e.lng, 0.6];
+      }).filter(Boolean);
+
+      const pts_bom = ESCOLAS.map(e => {
+        const s = scores[e.i];
+        if (!s || s.n===0) return null;
+        const iap = s.iapPonderado;
+        if (iap <= 7) return null;
+        return [e.lat, e.lng, iap / 10];
+      }).filter(Boolean);
+
+      // Uma camada principal com gradiente
       heatLayer = L.heatLayer(pontos, {
         radius: 55,
         blur: 40,
@@ -383,37 +412,45 @@ function atualizarVisualizacaoMapa() {
       }).addTo(mapa);
     }
 
+    // Pins pequenos por cima para identificação
     ESCOLAS.forEach(e => {
       const s = scores[e.i];
       if (!s || s.n === 0) return;
+      const iap = s.iapPonderado;
+      const cor = corNota(iap);
       const marker = L.circleMarker([e.lat, e.lng], {
-        radius: 5, fillColor: corNota(s.iapPonderado), color: '#111', weight: 1, opacity: 1, fillOpacity: 1,
+        radius: 5, fillColor: cor, color: '#111', weight: 1,
+        opacity: 1, fillOpacity: 1,
       });
       marker.bindPopup(popupEscola(e, s));
       pinsLayer.addLayer(marker);
     });
 
+    // Escolas sem resposta: pin cinza semi-transparente
     ESCOLAS.forEach(e => {
       const s = scores[e.i];
       if (s && s.n > 0) return;
       const marker = L.circleMarker([e.lat, e.lng], {
-        radius: 3, fillColor: '#7B95B8', color: 'transparent', opacity: 0.4, fillOpacity: 0.3,
+        radius: 3, fillColor: '#7B95B8', color: 'transparent',
+        opacity: 0.4, fillOpacity: 0.3,
       });
-      marker.bindPopup(`${_lt}div class="popup-escola">${e.n}<\/div>${_lt}div class="popup-bairro">${e.b}<\/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos${_lt}br>${_lt}em>Sem respostas ainda${_lt}/em><\/div>`);
+      marker.bindPopup(`${_lt}div class="popup-escola">${e.n}${_lt}/div>${_lt}div class="popup-bairro">${e.b}${_lt}/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos${_lt}br>${_lt}em>Sem respostas ainda${_lt}/em>${_lt}/div>`);
       pinsLayer.addLayer(marker);
     });
 
   } else {
+    // Modo pins: círculo por escola com tamanho proporcional aos eleitores aptos
     ESCOLAS.forEach(e => {
       const s = scores[e.i];
       const temDado = s && s.n > 0;
       const iap = temDado ? s.iapPonderado : null;
+      const cor = corNota(iap);
       const raio = temDado ? Math.min(18, 6 + Math.sqrt(e.apt / 500)) : 4;
       const marker = L.circleMarker([e.lat, e.lng], {
-        radius: raio, fillColor: corNota(iap), color: '#fff',
+        radius: raio, fillColor: cor, color: '#fff',
         weight: temDado ? 1.5 : 0.5, opacity: temDado ? 0.9 : 0.4, fillOpacity: temDado ? 0.85 : 0.25,
       });
-      marker.bindPopup(temDado ? popupEscola(e, s) : `${_lt}div class="popup-escola">${e.n}<\/div>${_lt}div class="popup-bairro">${e.b}<\/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores${_lt}br>${_lt}em>Sem respostas${_lt}/em><\/div>`);
+      marker.bindPopup(temDado ? popupEscola(e, s) : `${_lt}div class="popup-escola">${e.n}${_lt}/div>${_lt}div class="popup-bairro">${e.b}${_lt}/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores${_lt}br>${_lt}em>Sem respostas${_lt}/em>${_lt}/div>`);
       pinsLayer.addLayer(marker);
     });
   }
@@ -421,21 +458,22 @@ function atualizarVisualizacaoMapa() {
 
 function popupEscola(e, s) {
   const cor = corNota(s.iapPonderado);
-  return `${_lt}div class="popup-escola">🏫 ${e.n}<\/div>
-${_lt}div class="popup-bairro">📍 ${e.b}<\/div>
-${_lt}div class="popup-nota" style="color:${cor}">${s.iapPonderado.toFixed(1)}${_lt}span style="font-size:13px;color:#7B95B8"> /10<\/span><\/div>
-${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos · ${s.n} resp.<\/div>`;
+  return `${_lt}div class="popup-escola">🏫 ${e.n}${_lt}/div>
+${_lt}div class="popup-bairro">📍 ${e.b}${_lt}/div>
+${_lt}div class="popup-nota" style="color:${cor}">${s.iapPonderado.toFixed(1)}${_lt}span style="font-size:13px;color:#7B95B8"> /10${_lt}/span>${_lt}/div>
+${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos · ${s.n} resp.${_lt}/div>`;
 }
 
+// ── PARSE CSV
 function parseCSV(txt) {
   const linhas = txt.trim().split('\n');
   const header = linhas[0].split(',').map(h => h.trim().replace(/"/g,''));
   return linhas.slice(1).map(linha => {
     const vals = [];
     let cur = '', inQ = false;
-    for (let i = 0; i < linha.length; i++) {
+    for (let i = 0; i !== linha.length; i++) {
       const c = linha[i];
-      if (c=='"') { inQ=!inQ; } else if (c==',' && !inQ) { vals.push(cur); cur=''; } else { cur+=c; }
+      if (c==='"') { inQ=!inQ; } else if (c===',' && !inQ) { vals.push(cur); cur=''; } else { cur+=c; }
     }
     vals.push(cur);
     const obj = {};
@@ -444,30 +482,31 @@ function parseCSV(txt) {
   }).filter(r => r.timestamp && r.timestamp.length > 0);
 }
 
+// ── CALCULAR — IAP ponderado por eleitores aptos por escola
 function calcular(rows) {
   const total = rows.length;
+
+  // Agrupa por escola_idx
   const escolaData = {};
   rows.forEach(r => {
-          let idx = parseInt(r.escola_idx);
-          if (isNaN(idx) || !ESCOLA_MAP[idx]) {
-                            const pf=s=>parseFloat((s||'').replace(',','.')); const rlat=pf(r.lat), rlng=pf(r.lng);
-                    if (!isNaN(rlat) && !isNaN(rlng)) {
-                                let minD = Infinity;
-                                ESCOLAS.forEach(e => { const d=(e.lat-rlat)**2+(e.lng-rlng)**2; if(d${_lt}minD){minD=d;idx=e.i;} });
-                    }
-                    if (isNaN(idx) || !ESCOLA_MAP[idx]) return;
-          }if (!escolaData[idx]) escolaData[idx] = { notas:[], apt:apt, n:0, rows:[] };
+    const idx = parseInt(r.escola_idx);
+    const nota = parseFloat(r.nota_geral);
+    const apt = parseFloat(r.escola_apt) || 0;
+    if (isNaN(idx) || !ESCOLA_MAP[idx]) return;
+    if (!escolaData[idx]) escolaData[idx] = { notas:[], apt:apt, n:0, rows:[] };
     escolaData[idx].n++;
     escolaData[idx].rows.push(r);
     if (!isNaN(nota)) escolaData[idx].notas.push(nota);
   });
 
+  // IAP por escola = média simples das notas naquela escola
   const escolaScores = {};
   Object.entries(escolaData).forEach(([idx, d]) => {
     const med = d.notas.length ? d.notas.reduce((a,b)=>a+b,0)/d.notas.length : null;
     escolaScores[idx] = { iapPonderado: med, n: d.n, apt: d.apt };
   });
 
+  // IAP geral ponderado por eleitores aptos
   let somaNotaApt = 0, somaApt = 0;
   Object.entries(escolaScores).forEach(([idx, s]) => {
     if (s.iapPonderado == null) return;
@@ -478,6 +517,7 @@ function calcular(rows) {
   });
   const iapGeral = somaApt > 0 ? somaNotaApt / somaApt : 0;
 
+  // Scores por tema
   const temaScores = {};
   TEMAS.forEach(t => {
     const scores = [];
@@ -491,12 +531,14 @@ function calcular(rows) {
     if (r.problema_principal) probMap[r.problema_principal] = (probMap[r.problema_principal]||0)+1;
   });
 
-  return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, escolasCom: Object.keys(escolaScores).length };
+  const escolasCom = Object.keys(escolaScores).length;
+  return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, escolasCom };
 }
 
+// ── RENDER
 function corTexto(n) {
   if(n==null) return 'rgba(255,255,255,.15)';
-    if(n<=3) return '#FF4D6D'; if(n<=5) return '#FF8A3D'; if(n<=6) return '#FFD060'; return '#00E5A0';
+  if(n<=3) return '#FF4D6D'; if(n<=5) return '#FF8A3D'; if(n<=6) return '#FFD060'; return '#00E5A0';
 }
 
 function render(m) {
@@ -513,6 +555,7 @@ function render(m) {
     document.getElementById('m-prob-pct').textContent = ((probs[0][1]/m.total)*100).toFixed(0)+'% citam como nº1';
   }
 
+  // Gauge
   const pct = m.iapGeral / 10;
   document.getElementById('gauge-arc').style.strokeDashoffset = 226 - (pct * 226);
   document.getElementById('gauge-valor').textContent = m.iapGeral.toFixed(1);
@@ -524,35 +567,39 @@ function render(m) {
   dEl.style.color = m.iapGeral>=7?'#00E5A0':m.iapGeral>=5?'#FFD060':'#FF4D6D';
   dEl.style.border = `1px solid ${m.iapGeral>=7?'rgba(0,229,160,.3)':m.iapGeral>=5?'rgba(255,208,96,.3)':'rgba(255,77,109,.3)'}`;
 
+  // Temas
   document.getElementById('temas-content').innerHTML = TEMAS.map(t => {
     const s = m.temaScores[t.id];
     const pct = s!=null ? (s/10)*100 : 0;
     const cor = corTexto(s);
     return `${_lt}div class="tema-row">
-      ${_lt}div class="tema-header">${_lt}div class="tema-nome">${t.nome}<\/div>${_lt}div class="tema-nota" style="color:${cor}">${s!=null?s.toFixed(1):'—'}<\/div><\/div>
-      ${_lt}div class="barra-bg">${_lt}div class="barra-fill-anim" style="width:${pct}%;background:linear-gradient(90deg,${cor}80,${cor})"><\/div><\/div>
-    <\/div>`;
+      ${_lt}div class="tema-header">${_lt}div class="tema-nome">${t.nome}${_lt}/div>${_lt}div class="tema-nota" style="color:${cor}">${s!=null?s.toFixed(1):'—'}${_lt}/div>${_lt}/div>
+      ${_lt}div class="barra-bg">${_lt}div class="barra-fill-anim" style="width:${pct}%;background:linear-gradient(90deg,${cor}80,${cor})">${_lt}/div>${_lt}/div>
+    ${_lt}/div>`;
   }).join('');
 
+  // QV
   const qvOrdem = ['Muito boa','Boa','Regular','Ruim','Muito ruim'];
   const qvCores = ['#00E5A0','#5DB8FF','#FFD060','#FF8A3D','#FF4D6D'];
   const qvTot = Object.values(m.qvMap).reduce((a,b)=>a+b,0)||1;
   document.getElementById('dist-content').innerHTML = qvOrdem.map((l,i)=>{
     const q=m.qvMap[l]||0, p=((q/qvTot)*100).toFixed(1);
-    return `${_lt}div class="dist-row">${_lt}div class="dist-label">${l}<\/div>
-      ${_lt}div class="dist-barra">${_lt}div class="dist-fill" style="width:${p}%;background:${qvCores[i]}">${_lt}span>${q>0?q:''}<\/span><\/div><\/div>
-      ${_lt}div class="dist-pct">${p}%<\/div><\/div>`;
+    return `${_lt}div class="dist-row">${_lt}div class="dist-label">${l}${_lt}/div>
+      ${_lt}div class="dist-barra">${_lt}div class="dist-fill" style="width:${p}%;background:${qvCores[i]}">${_lt}span>${q>0?q:''}${_lt}/span>${_lt}/div>${_lt}/div>
+      ${_lt}div class="dist-pct">${p}%${_lt}/div>${_lt}/div>`;
   }).join('');
 
+  // Problemas
   const pTot = Object.values(m.probMap).reduce((a,b)=>a+b,0)||1;
   document.getElementById('prob-content').innerHTML = Object.entries(m.probMap)
     .sort((a,b)=>b[1]-a[1]).slice(0,6)
     .map(([nome,qtd],i)=>`${_lt}div class="prob-item">
-      ${_lt}div class="prob-rank">${i+1}<\/div>
-      ${_lt}div class="prob-nome">${nome}<\/div>
-      ${_lt}div class="prob-pct">${((qtd/pTot)*100).toFixed(0)}%<\/div>
-    <\/div>`).join('');
+      ${_lt}div class="prob-rank">${i+1}${_lt}/div>
+      ${_lt}div class="prob-nome">${nome}${_lt}/div>
+      ${_lt}div class="prob-pct">${((qtd/pTot)*100).toFixed(0)}%${_lt}/div>
+    ${_lt}/div>`).join('');
 
+  // Grid escolas — ordenado por IAP ponderado desc, com escolas sem resposta por baixo
   const comResp = ESCOLAS
     .filter(e => m.escolaScores[e.i] && m.escolaScores[e.i].n > 0)
     .sort((a,b) => (m.escolaScores[b.i]?.iapPonderado||0) - (m.escolaScores[a.i]?.iapPonderado||0));
@@ -567,42 +614,41 @@ function render(m) {
       const corBorda = iap!=null ? corNota(iap)+'40' : 'var(--borda)';
       const bg = iap!=null ? corNota(iap)+'12' : '';
       return `${_lt}div class="ecell" style="border-color:${corBorda};background:${bg}">
-        ${_lt}div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdade[s]?) /,'')}<\/div>
-        ${_lt}div class="ecell-bairro">${e.b}<\/div>
-        ${_lt}div class="ecell-nota" style="color:${cor}">${iap!=null?iap.toFixed(1):'·'}<\/div>
-        ${temDado ? `${_lt}div class="ecell-n">n=${s.n}<\/div>` : ''}
-        ${_lt}div class="ecell-apt">⚖ ${(e.apt/1000).toFixed(1)}k eleit.<\/div>
-      <\/div>`;
+        ${_lt}div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdade[s]?) /,'')}${_lt}/div>
+        ${_lt}div class="ecell-bairro">${e.b}${_lt}/div>
+        ${_lt}div class="ecell-nota" style="color:${cor}">${iap!=null?iap.toFixed(1):'·'}${_lt}/div>
+        ${temDado ? `${_lt}div class="ecell-n">n=${s.n}${_lt}/div>` : ''}
+        ${_lt}div class="ecell-apt">⚖ ${(e.apt/1000).toFixed(1)}k eleit.${_lt}/div>
+      ${_lt}/div>`;
     }).join('')
-  }<\/div>`;
+  }${_lt}/div>`;
 
+  // Atualiza mapa
   atualizarVisualizacaoMapa();
 }
 
 function corNota(n){
   if(!n&&n!==0)return'rgba(255,255,255,.06)';
-    if(n<=3)return'#FF4D6D';if(n<=5)return'#FF8A3D';if(n<=6)return'#FFD060';return'#00E5A0';
+  if(n<=3)return'#FF4D6D';if(n<=5)return'#FF8A3D';if(n<=6)return'#FFD060';return'#00E5A0';
 }
 
+// ── CARREGAR
 let carregando = false;
 async function carregar() {
-    if (carregando) return;
-        carregando = true;
-    const timer = setTimeout(() => { carregando = false; }, 15000); // reset automático 15s
-    initMapa();
-    try {
-          const resp = await fetch(CSV_URL + '&nocache=' + Date.now());
-          const txt = await resp.text();
-          const rows = parseCSV(txt);
-          if (rows.length > 0) render(calcular(rows));
-                document.getElementById('atualizado').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    } catch(e) { console.error(e); }
-        clearTimeout(timer);
-    carregando = false;
+  if (carregando) return;
+  carregando = true;
+  initMapa();
+  try {
+    const resp = await fetch(CSV_URL + '&nocache=' + Date.now());
+    const txt = await resp.text();
+    const rows = parseCSV(txt);
+    if (rows.length > 0) render(calcular(rows));
+    document.getElementById('atualizado').textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  } catch(e) { console.error(e); }
+  carregando = false;
 }
-carregar(); // v3.1
-setInterval(carregar, 30000); // v4;
-// Recarrega quando a aba fica visível após ficar em background
-document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
-</body> 
+carregar();
+setInterval(carregar, 30000);
+</script>
+</body>
 </html>
