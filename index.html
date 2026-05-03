@@ -482,17 +482,36 @@ function parseCSV(txt) {
   }).filter(r => r.timestamp && r.timestamp.length > 0);
 }
 
+// ── ENCONTRA ESCOLA MAIS PRÓXIMA por lat/lng (distância euclidiana — escala local)
+function escolaMaisProxima(lat, lng) {
+  let minD = Infinity, nearest = null;
+  ESCOLAS.forEach(e => {
+    const d = (e.lat - lat) ** 2 + (e.lng - lng) ** 2;
+    if (d < minD) { minD = d; nearest = e.i; }
+  });
+  return nearest;
+}
+
 // ── CALCULAR — IAP ponderado por eleitores aptos por escola
 function calcular(rows) {
   const total = rows.length;
 
-  // Agrupa por escola_idx
+  // Agrupa por escola_idx (v2) ou lat/lng mais próximo (v1)
   const escolaData = {};
   rows.forEach(r => {
-    const idx = parseInt(r.escola_idx);
+    let idx = parseInt(r.escola_idx);
+
+    // Fallback v1: sem escola_idx — usa lat/lng para encontrar escola mais próxima
+    if (isNaN(idx)) {
+      const lat = parseFloat((r.lat  || '').replace(',', '.'));
+      const lng = parseFloat((r.lng  || '').replace(',', '.'));
+      if (isNaN(lat) || isNaN(lng)) return; // linha inválida
+      idx = escolaMaisProxima(lat, lng);
+    }
+
+    if (!ESCOLA_MAP[idx]) return;
     const nota = parseFloat(r.nota_geral);
-    const apt = parseFloat(r.escola_apt) || 0;
-    if (isNaN(idx) || !ESCOLA_MAP[idx]) return;
+    const apt  = ESCOLA_MAP[idx].apt;
     if (!escolaData[idx]) escolaData[idx] = { notas:[], apt:apt, n:0, rows:[] };
     escolaData[idx].n++;
     escolaData[idx].rows.push(r);
