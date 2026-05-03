@@ -334,8 +334,13 @@ const TEMAS = [
 const LIKERT = {'Ótimo':10,'Bom':7.5,'Regular':5,'Ruim':2.5,'Péssimo':0,'Não sei':null};
 
 // ── IDW CANVAS HEATMAP ────────────────────────────────────────────────────
-// Interpola IAP entre escolas via Inverse Distance Weighting (potência 2).
-// Render em canvas pixel-a-pixel com fade cosseno — sem dependência externa.
+// Interpola IAP via Inverse Distance Weighting (potência 2) em canvas nativo.
+//
+// ALINHAMENTO CORRETO:
+//   O overlayPane do Leaflet recebe CSS transform durante pan/zoom.
+//   Solução: usar latLngToLayerPoint + L.DomUtil.setPosition para
+//   posicionar o canvas compensando o transform do pane — garante
+//   correlação exata com as coordenadas geográficas em qualquer zoom.
 const IDWHeatLayer = L.Layer.extend({
   onAdd(map) {
     this._map = map;
@@ -345,38 +350,50 @@ const IDWHeatLayer = L.Layer.extend({
       p.style.pointerEvents = 'none';
     }
     this._canvas = L.DomUtil.create('canvas', '', map.getPane('heatPane'));
-    Object.assign(this._canvas.style, {
-      position:'absolute', top:'0', left:'0',
-      pointerEvents:'none', filter:'blur(4px)'
-    });
-    map.on('moveend zoomend resize viewreset', this._draw, this);
+    this._canvas.style.cssText = 'position:absolute;pointer-events:none;filter:blur(4px);transition:opacity .15s;';
+
+    // Redesenha após fim de pan/zoom e após reset de view
+    map.on('moveend viewreset', this._draw, this);
+    // Esconde durante animação de zoom para evitar desalinhamento visual
+    map.on('zoomstart',  () => { this._canvas.style.opacity = '0'; });
+    map.on('zoomend',    () => { this._canvas.style.opacity = '1'; this._draw(); });
+
     this._draw();
   },
+
   onRemove(map) {
     L.DomUtil.remove(this._canvas);
-    map.off('moveend zoomend resize viewreset', this._draw, this);
+    map.off('moveend viewreset zoomstart zoomend', null, this);
   },
-  setData(data) { // data: [{lat, lng, v}]
+
+  setData(data) { // [{lat, lng, v}]
     this._data = data;
     this._draw();
   },
+
   _draw() {
     if (!this._map) return;
     const map = this._map, sz = map.getSize(), c = this._canvas;
-    c.width = sz.x; c.height = sz.y; // resize limpa canvas automaticamente
+    c.width = sz.x; c.height = sz.y; // resize limpa canvas
     if (!this._data || !this._data.length) return;
 
-    // Converte lat/lng → pixels do container a cada draw (adapta ao zoom/pan)
+    // Calcula o offset do pane para ancorar o canvas na viewport corretamente.
+    // containerPointToLayerPoint([0,0]) devolve o canto superior-esquerdo do
+    // container em coordenadas de layer — contrabalança o CSS transform do pane.
+    const offset = map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(c, offset);
+
+    // Converte lat/lng → coordenadas de layer → coordenadas locais do canvas
     const pts = this._data.map(p => {
-      const cp = map.latLngToContainerPoint([p.lat, p.lng]);
-      return { x: cp.x, y: cp.y, v: p.v };
+      const lp = map.latLngToLayerPoint([p.lat, p.lng]);
+      return { x: lp.x - offset.x, y: lp.y - offset.y, v: p.v };
     });
 
     const ctx = c.getContext('2d');
     const img = ctx.createImageData(sz.x, sz.y);
     const px  = img.data;
-    const S   = 3;   // tamanho do bloco (velocidade vs qualidade)
-    const R   = 230; // raio de fade em pixels (~6 km no zoom 12)
+    const S   = 3;   // bloco de pixels (velocidade vs qualidade)
+    const R   = 220; // raio de fade em pixels (escala com zoom automaticamente)
 
     for (let cy = 0; cy < sz.y; cy += S) {
       for (let cx = 0; cx < sz.x; cx += S) {
@@ -389,7 +406,7 @@ const IDWHeatLayer = L.Layer.extend({
           wSum += w; vSum += p.v * w;
         }
         if (wSum === 0) continue;
-        // Fade por cosseno: borda suave em vez de corte abrupto
+        // Fade cosseno: dissolução suave nas bordas
         const fade = minD >= R ? 0 : 0.5 * (1 + Math.cos(Math.PI * minD / R));
         const a = Math.round(fade * 205);
         if (a < 4) continue;
