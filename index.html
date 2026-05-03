@@ -159,10 +159,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div id="mapa-leaflet"></div>
       </div>
       <div class="mapa-legenda" style="margin-top:10px;">
-        <div class="legenda-item"><div class="legenda-dot" style="background:#FF4D6D"></div> Crítico (0–4)</div>
-        <div class="legenda-item"><div class="legenda-dot" style="background:#FF8A3D"></div> Ruim (4–6)</div>
-        <div class="legenda-item"><div class="legenda-dot" style="background:#FFD060"></div> Regular (6–7)</div>
-        <div class="legenda-item"><div class="legenda-dot" style="background:#00E5A0"></div> Bom (7–10)</div>
+        <div class="legenda-item"><div class="legenda-dot" style="background:#DC2626"></div> Crítico (0–3)</div>
+        <div class="legenda-item"><div class="legenda-dot" style="background:#F97316"></div> Ruim (3–5)</div>
+        <div class="legenda-item"><div class="legenda-dot" style="background:#EAB308"></div> Regular (5–7)</div>
+        <div class="legenda-item"><div class="legenda-dot" style="background:#14B8A6"></div> Bom (7–8)</div>
+        <div class="legenda-item"><div class="legenda-dot" style="background:#16A34A"></div> Ótimo (8–10)</div>
       </div>
       <div style="font-size:9px;color:var(--text2);margin-top:6px;opacity:.6;">
         Pontos ancorados nas coordenadas oficiais das 91 seções eleitorais do TSE — Jundiaí SP
@@ -332,13 +333,99 @@ const TEMAS = [
 ];
 const LIKERT = {'Ótimo':10,'Bom':7.5,'Regular':5,'Ruim':2.5,'Péssimo':0,'Não sei':null};
 
+// ── IDW CANVAS HEATMAP ────────────────────────────────────────────────────
+// Interpola IAP entre escolas via Inverse Distance Weighting (potência 2).
+// Render em canvas pixel-a-pixel com fade cosseno — sem dependência externa.
+const IDWHeatLayer = L.Layer.extend({
+  onAdd(map) {
+    this._map = map;
+    if (!map.getPane('heatPane')) {
+      const p = map.createPane('heatPane');
+      p.style.zIndex = 350;
+      p.style.pointerEvents = 'none';
+    }
+    this._canvas = L.DomUtil.create('canvas', '', map.getPane('heatPane'));
+    Object.assign(this._canvas.style, {
+      position:'absolute', top:'0', left:'0',
+      pointerEvents:'none', filter:'blur(4px)'
+    });
+    map.on('moveend zoomend resize viewreset', this._draw, this);
+    this._draw();
+  },
+  onRemove(map) {
+    L.DomUtil.remove(this._canvas);
+    map.off('moveend zoomend resize viewreset', this._draw, this);
+  },
+  setData(data) { // data: [{lat, lng, v}]
+    this._data = data;
+    this._draw();
+  },
+  _draw() {
+    if (!this._map) return;
+    const map = this._map, sz = map.getSize(), c = this._canvas;
+    c.width = sz.x; c.height = sz.y; // resize limpa canvas automaticamente
+    if (!this._data || !this._data.length) return;
+
+    // Converte lat/lng → pixels do container a cada draw (adapta ao zoom/pan)
+    const pts = this._data.map(p => {
+      const cp = map.latLngToContainerPoint([p.lat, p.lng]);
+      return { x: cp.x, y: cp.y, v: p.v };
+    });
+
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(sz.x, sz.y);
+    const px  = img.data;
+    const S   = 3;   // tamanho do bloco (velocidade vs qualidade)
+    const R   = 230; // raio de fade em pixels (~6 km no zoom 12)
+
+    for (let cy = 0; cy < sz.y; cy += S) {
+      for (let cx = 0; cx < sz.x; cx += S) {
+        let wSum = 0, vSum = 0, minD = Infinity;
+        for (const p of pts) {
+          const d = Math.hypot(cx - p.x, cy - p.y);
+          if (d < minD) minD = d;
+          if (d < 1) { wSum = 1e9; vSum = p.v * 1e9; break; }
+          const w = 1 / (d * d); // IDW potência 2
+          wSum += w; vSum += p.v * w;
+        }
+        if (wSum === 0) continue;
+        // Fade por cosseno: borda suave em vez de corte abrupto
+        const fade = minD >= R ? 0 : 0.5 * (1 + Math.cos(Math.PI * minD / R));
+        const a = Math.round(fade * 205);
+        if (a < 4) continue;
+        const [r, g, b] = _iapRgb(vSum / wSum);
+        for (let dy = 0; dy < S && cy + dy < sz.y; dy++) {
+          for (let dx = 0; dx < S && cx + dx < sz.x; dx++) {
+            const i = ((cy + dy) * sz.x + (cx + dx)) * 4;
+            px[i] = r; px[i+1] = g; px[i+2] = b; px[i+3] = a;
+          }
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+});
+
+// Escala perceptual: vermelho → laranja → amarelo → ciano → verde
+function _iapRgb(v) {
+  const s = [[0,[220,38,38]],[3,[249,115,22]],[5,[234,179,8]],[7,[20,184,166]],[10,[22,163,74]]];
+  for (let i = 1; i < s.length; i++) {
+    if (v <= s[i][0]) {
+      const t = (v - s[i-1][0]) / (s[i][0] - s[i-1][0]);
+      return s[i-1][1].map((c, j) => Math.round(c + t * (s[i][1][j] - c)));
+    }
+  }
+  return [22, 163, 74];
+}
+
 // ── MAPA
-let mapa = null, heatLayer = null, pinsLayer = null, modoMapa = 'heat';
+let mapa = null, idwLayer = null, pinsLayer = null, modoMapa = 'heat';
 
 function initMapa() {
   if (mapa) return;
   mapa = L.map('mapa-leaflet', { center:[-23.185,-46.883], zoom:12, zoomControl:true, scrollWheelZoom:true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap', maxZoom:18 }).addTo(mapa);
+  idwLayer = new IDWHeatLayer().addTo(mapa);
   pinsLayer = L.layerGroup().addTo(mapa);
 }
 
@@ -358,88 +445,41 @@ window.setMapMode = setMapMode;
 function atualizarVisualizacaoMapa() {
   if (!mapa || !window._escolaScores) return;
   const scores = window._escolaScores;
-
-  // Remove camadas existentes
-  if (heatLayer) { mapa.removeLayer(heatLayer); heatLayer = null; }
   pinsLayer.clearLayers();
 
   if (modoMapa === 'heat') {
-    // Heatmap: ponto por escola, intensidade = IAP normalizado (0-1)
-    // Escolas sem resposta ficam com intensidade 0 (não contribuem)
-    // Raio grande para manchas se encontrarem
-    const pontos = ESCOLAS.map(e => {
-      const s = scores[e.i];
-      if (!s || s.n === 0) return null;
-      const iap = s.iapPonderado;
-      const intens = iap / 10; // 0 a 1
-      return [e.lat, e.lng, intens];
-    }).filter(Boolean);
+    // Alimenta o IDW canvas com os pontos que têm dado
+    const data = ESCOLAS
+      .filter(e => scores[e.i] && scores[e.i].n > 0)
+      .map(e => ({ lat: e.lat, lng: e.lng, v: scores[e.i].iapPonderado }));
+    idwLayer.setData(data);
 
-    if (pontos.length > 0) {
-      // Usa múltiplas camadas: uma por faixa de cor para simular gradiente colorido
-      // Camada vermelha (notas baixas)
-      const pts_ruim = ESCOLAS.map(e => {
-        const s = scores[e.i];
-        if (!s || s.n===0) return null;
-        const iap = s.iapPonderado;
-        if (iap >= 5) return null; // só ruim/crítico
-        return [e.lat, e.lng, (5 - iap) / 5];
-      }).filter(Boolean);
-
-      const pts_med = ESCOLAS.map(e => {
-        const s = scores[e.i];
-        if (!s || s.n===0) return null;
-        const iap = s.iapPonderado;
-        if (iap<=4 || iap > 7) return null;
-        return [e.lat, e.lng, 0.6];
-      }).filter(Boolean);
-
-      const pts_bom = ESCOLAS.map(e => {
-        const s = scores[e.i];
-        if (!s || s.n===0) return null;
-        const iap = s.iapPonderado;
-        if (iap <= 7) return null;
-        return [e.lat, e.lng, iap / 10];
-      }).filter(Boolean);
-
-      // Uma camada principal com gradiente
-      heatLayer = L.heatLayer(pontos, {
-        radius: 55,
-        blur: 40,
-        maxZoom: 15,
-        max: 1.0,
-        gradient: { 0.0:'#FF4D6D', 0.4:'#FF8A3D', 0.6:'#FFD060', 0.8:'#00D4FF', 1.0:'#00E5A0' }
-      }).addTo(mapa);
-    }
-
-    // Pins pequenos por cima para identificação
+    // Pins coloridos por cima para identificação e popup
     ESCOLAS.forEach(e => {
       const s = scores[e.i];
       if (!s || s.n === 0) return;
-      const iap = s.iapPonderado;
-      const cor = corNota(iap);
       const marker = L.circleMarker([e.lat, e.lng], {
-        radius: 5, fillColor: cor, color: '#111', weight: 1,
-        opacity: 1, fillOpacity: 1,
+        radius: 6, fillColor: corNota(s.iapPonderado), color: '#fff',
+        weight: 1.5, opacity: 1, fillOpacity: 0.95
       });
       marker.bindPopup(popupEscola(e, s));
       pinsLayer.addLayer(marker);
     });
 
-    // Escolas sem resposta: pin cinza semi-transparente
+    // Escolas sem resposta: ponto cinza discreto
     ESCOLAS.forEach(e => {
-      const s = scores[e.i];
-      if (s && s.n > 0) return;
+      if (scores[e.i] && scores[e.i].n > 0) return;
       const marker = L.circleMarker([e.lat, e.lng], {
         radius: 3, fillColor: '#7B95B8', color: 'transparent',
-        opacity: 0.4, fillOpacity: 0.3,
+        opacity: 0.4, fillOpacity: 0.25
       });
       marker.bindPopup(`${_lt}div class="popup-escola">${e.n}${_lt}/div>${_lt}div class="popup-bairro">${e.b}${_lt}/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos${_lt}br>${_lt}em>Sem respostas ainda${_lt}/em>${_lt}/div>`);
       pinsLayer.addLayer(marker);
     });
 
   } else {
-    // Modo pins: círculo por escola com tamanho proporcional aos eleitores aptos
+    // Modo pins: limpa canvas IDW, mostra círculos proporcionais aos eleitores
+    idwLayer.setData([]);
     ESCOLAS.forEach(e => {
       const s = scores[e.i];
       const temDado = s && s.n > 0;
@@ -448,7 +488,7 @@ function atualizarVisualizacaoMapa() {
       const raio = temDado ? Math.min(18, 6 + Math.sqrt(e.apt / 500)) : 4;
       const marker = L.circleMarker([e.lat, e.lng], {
         radius: raio, fillColor: cor, color: '#fff',
-        weight: temDado ? 1.5 : 0.5, opacity: temDado ? 0.9 : 0.4, fillOpacity: temDado ? 0.85 : 0.25,
+        weight: temDado ? 1.5 : 0.5, opacity: temDado ? 0.9 : 0.4, fillOpacity: temDado ? 0.85 : 0.25
       });
       marker.bindPopup(temDado ? popupEscola(e, s) : `${_lt}div class="popup-escola">${e.n}${_lt}/div>${_lt}div class="popup-bairro">${e.b}${_lt}/div>${_lt}div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores${_lt}br>${_lt}em>Sem respostas${_lt}/em>${_lt}/div>`);
       pinsLayer.addLayer(marker);
