@@ -230,7 +230,7 @@ let mapa = null, idwLayer = null, pinsLayer = null, modoMapa = 'heat';
 
 function initMapa() {
   if (mapa) return;
-  mapa = L.map('mapa-leaflet', { center: [-23.185, -46.883], zoom: 12, zoomControl: true, scrollWheelZoom: true });
+  mapa = L.map('mapa-leaflet', { center: [-23.186, -46.884], zoom: 13, zoomControl: true, scrollWheelZoom: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 18 }).addTo(mapa);
   idwLayer  = new IDWHeatLayer().addTo(mapa);
   pinsLayer = L.layerGroup().addTo(mapa);
@@ -428,6 +428,9 @@ function calcular(rows) {
 function render(m) {
   _escolaScores = m.escolaScores; // atualiza estado módulo-local
 
+  // Remove skeleton na primeira carga com dados
+  document.querySelectorAll('.metrica-valor.skeleton,.metrica-sub.skeleton').forEach(el=>el.classList.remove('skeleton'));
+
   // Métricas de cabeçalho
   document.getElementById('m-total').textContent  = m.total.toLocaleString('pt-BR');
   document.getElementById('m-iap').textContent    = m.iapGeral.toFixed(1);
@@ -501,11 +504,12 @@ function render(m) {
       const cor     = corTexto(iap);
       const corBorda = iap != null ? corNota(iap) + '40' : 'var(--borda)';
       const bg       = iap != null ? corNota(iap) + '12' : '';
-      return `<div class="ecell" style="border-color:${corBorda};background:${bg}">
+      const baixaAmostra = temDado && s.n < 3;
+      return `<div class="ecell" style="border-color:${corBorda};background:${bg}${baixaAmostra?';opacity:.75':''}" title="${baixaAmostra?'Baixa amostra — resultado preliminar':''}">
         <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdades?) /, '')}</div>
         <div class="ecell-bairro">${e.b}</div>
         <div class="ecell-nota" style="color:${cor}">${iap != null ? iap.toFixed(1) : '·'}</div>
-        ${temDado ? `<div class="ecell-n">n=${s.n}</div>` : ''}
+        ${temDado ? `<div class="ecell-n" style="color:${baixaAmostra?'var(--amarelo)':'var(--text2)'}">${baixaAmostra?'⚠ ':''}n=${s.n}</div>` : ''}
         <div class="ecell-apt">⚖ ${(e.apt / 1000).toFixed(1)}k eleit.</div>
       </div>`;
     }).join('')
