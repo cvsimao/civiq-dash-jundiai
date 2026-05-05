@@ -363,11 +363,14 @@ function escolaMaisProxima(lat, lng) {
 
 function normalizeRow(r) {
   let idx = parseInt(r.escola_idx);
+  let isSintetico = false;
 
-  // Fallback: bairro numérico (dados gerados pelo script de teste)
+  // Fallback: bairro numérico → linha sintética do script de teste.
+  // O Apps Script gravou os campos na ordem das chaves do payload Python,
+  // deslocando todos os valores em relação às colunas do sheet.
   if (isNaN(idx)) {
     const bIdx = parseInt(r.bairro);
-    if (!isNaN(bIdx) && ESCOLA_MAP[bIdx]) idx = bIdx;
+    if (!isNaN(bIdx) && ESCOLA_MAP[bIdx]) { idx = bIdx; isSintetico = true; }
   }
 
   if (isNaN(idx)) {
@@ -379,6 +382,20 @@ function normalizeRow(r) {
   }
 
   if (!ESCOLA_MAP[idx]) return null;
+
+  // Corrige o deslocamento de colunas nas linhas sintéticas:
+  // col saude_atendimento (12) → nota_geral real
+  // col saude_espera      (11) → qualidade_vida real
+  // col edu_creche        (14) → problema_principal real
+  if (isSintetico) {
+    return {
+      ...r, _idx: idx,
+      nota_geral:         r.saude_atendimento,
+      qualidade_vida:     r.saude_espera,
+      problema_principal: r.edu_creche,
+    };
+  }
+
   return { ...r, _idx: idx };
 }
 
@@ -392,9 +409,7 @@ function calcular(rows) {
     const norm = normalizeRow(r);
     if (!norm) return;
     const idx  = norm._idx;
-    // nota_geral primário; fallback p/ saude_atendimento quando dados sintéticos deslocam colunas
-    let nota = parseFloat(norm.nota_geral);
-    if (isNaN(nota)) nota = parseFloat(norm.saude_atendimento);
+    const nota = parseFloat(norm.nota_geral);
     if (!escolaData[idx]) escolaData[idx] = { notas: [], apt: ESCOLA_MAP[idx].apt, n: 0 };
     escolaData[idx].n++;
     if (!isNaN(nota)) escolaData[idx].notas.push(nota);
