@@ -364,6 +364,12 @@ function escolaMaisProxima(lat, lng) {
 function normalizeRow(r) {
   let idx = parseInt(r.escola_idx);
 
+  // Fallback: bairro numérico (dados gerados pelo script de teste)
+  if (isNaN(idx)) {
+    const bIdx = parseInt(r.bairro);
+    if (!isNaN(bIdx) && ESCOLA_MAP[bIdx]) idx = bIdx;
+  }
+
   if (isNaN(idx)) {
     // Schema v1: coordenada com vírgula decimal (pt-BR)
     const lat = parseFloat((r.lat || '').replace(',', '.'));
@@ -386,7 +392,9 @@ function calcular(rows) {
     const norm = normalizeRow(r);
     if (!norm) return;
     const idx  = norm._idx;
-    const nota = parseFloat(norm.nota_geral);
+    // nota_geral primário; fallback p/ saude_atendimento quando dados sintéticos deslocam colunas
+    let nota = parseFloat(norm.nota_geral);
+    if (isNaN(nota)) nota = parseFloat(norm.saude_atendimento);
     if (!escolaData[idx]) escolaData[idx] = { notas: [], apt: ESCOLA_MAP[idx].apt, n: 0 };
     escolaData[idx].n++;
     if (!isNaN(nota)) escolaData[idx].notas.push(nota);
@@ -439,7 +447,9 @@ function render(m) {
 
   const probs = Object.entries(m.probMap).sort((a, b) => b[1] - a[1]);
   if (probs.length) {
-    document.getElementById('m-prob').textContent     = probs[0][0].split('(')[0].trim().split(' ')[0];
+    const probLabel = probs[0][0].split('(')[0].trim();
+    const probShort = probLabel.split(' ').slice(0, 2).join(' ');
+    document.getElementById('m-prob').textContent     = probShort.length > 18 ? probShort.slice(0, 16) + '…' : probShort;
     document.getElementById('m-prob-pct').textContent = ((probs[0][1] / m.total) * 100).toFixed(0) + '% citam como nº1';
   }
 
@@ -467,8 +477,8 @@ function render(m) {
     </div>`;
   }).join('');
 
-  // Qualidade de vida — labels de qvOrdem são dados estáticos, sem XSS
-  const qvOrdem = ['Muito boa', 'Boa', 'Regular', 'Ruim', 'Muito ruim'];
+  // Qualidade de vida — casado com os valores gravados pelo formulário
+  const qvOrdem = ['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo'];
   const qvCores = ['#00E5A0', '#5DB8FF', '#FFD060', '#FF8A3D', '#FF4D6D'];
   const qvTot   = Object.values(m.qvMap).reduce((a, b) => a + b, 0) || 1;
   document.getElementById('dist-content').innerHTML = qvOrdem.map((l, i) => {
@@ -506,7 +516,7 @@ function render(m) {
       const bg       = iap != null ? corNota(iap) + '12' : '';
       const baixaAmostra = temDado && s.n < 3;
       return `<div class="ecell" style="border-color:${corBorda};background:${bg}${baixaAmostra?';opacity:.75':''}" title="${baixaAmostra?'Baixa amostra — resultado preliminar':''}">
-        <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SESI|SENAC|Faculdades?) /, '')}</div>
+        <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SENAC|Faculdades?) /, '')}</div>
         <div class="ecell-bairro">${e.b}</div>
         <div class="ecell-nota" style="color:${cor}">${iap != null ? iap.toFixed(1) : '·'}</div>
         ${temDado ? `<div class="ecell-n" style="color:${baixaAmostra?'var(--amarelo)':'var(--text2)'}">${baixaAmostra?'⚠ ':''}n=${s.n}</div>` : ''}
@@ -520,12 +530,14 @@ function render(m) {
 
 // ── POLLING ───────────────────────────────────────────────────────────────
 
-let carregando  = false;
-let _lastHash   = 0;
+let carregando   = false;
+let _lastHash    = 0;
+let _primeiraVez = true;  // primeira chamada ignora document.hidden
 
 async function carregar() {
-  // Pausa enquanto a aba está oculta — retoma via visibilitychange abaixo.
-  if (document.hidden || carregando) return;
+  // Pausa enquanto a aba está oculta, exceto na primeira carga.
+  if (!_primeiraVez && (document.hidden || carregando)) return;
+  _primeiraVez = false;
   carregando = true;
 
   const elStatus = document.getElementById('atualizado');
