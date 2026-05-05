@@ -263,6 +263,35 @@ function setMapMode(modo, btn) {
 }
 window.setMapMode = setMapMode;
 
+// Popover de baixa amostra
+(function () {
+  const pop = () => document.getElementById('aviso-pop');
+
+  window.avisoBaixaAmostra = function (el, n, nomeEscola) {
+    const p = pop(); if (!p) return;
+    p.innerHTML = `<strong>⚠ Resultado preliminar</strong>
+      <p><strong>${nomeEscola}</strong> tem apenas <strong>${n} resposta${n > 1 ? 's' : ''}</strong> registrada${n > 1 ? 's' : ''}.</p>
+      <p>O IAP pode não refletir a realidade. Quanto mais respostas, mais confiável o índice.</p>`;
+
+    const rect = el.getBoundingClientRect();
+    const pw = 220; // max-width do popover
+    let left = rect.left + rect.width / 2 - pw / 2;
+    if (left < 8) left = 8;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    let top = rect.bottom + 6;
+    if (top + 120 > window.innerHeight) top = rect.top - 126;
+
+    p.style.left = left + 'px';
+    p.style.top  = top  + 'px';
+    p.classList.add('vis');
+  };
+
+  document.addEventListener('click', function (e) {
+    const p = pop(); if (!p) return;
+    if (!e.target.closest('.ecell-n')) p.classList.remove('vis');
+  });
+})();
+
 // Estado de scores por escola — módulo-local, não mais em window._escolaScores
 let _escolaScores = {};
 
@@ -540,7 +569,7 @@ function render(m) {
         <div class="ecell-nome">${e.n.replace(/^(EE|EMEB|ETEC|FATEC|SENAC|Faculdades?) /, '')}</div>
         <div class="ecell-bairro">${e.b}</div>
         <div class="ecell-nota" style="color:${cor}">${iap != null ? iap.toFixed(1) : '·'}</div>
-        ${temDado ? `<div class="ecell-n" style="color:${baixaAmostra?'var(--amarelo)':'var(--text2)'}">${baixaAmostra?'⚠ ':''}n=${s.n}</div>` : ''}
+        ${temDado ? `<div class="ecell-n${baixaAmostra?' baixa':''}" style="color:${baixaAmostra?'var(--amarelo)':'var(--text2)'}"${baixaAmostra?` onclick="avisoBaixaAmostra(this,${s.n},\`${e.n.replace(/`/g,"'")}\`);event.stopPropagation()"`:''} title="${baixaAmostra?`Resultado preliminar — apenas ${s.n} resposta${s.n>1?'s':''} (clique para saber mais)`:`n=${s.n} respostas`}">${baixaAmostra?'⚠ ':''}n=${s.n}</div>` : ''}
         <div class="ecell-apt">⚖ ${(e.apt / 1000).toFixed(1)}k eleit.</div>
       </div>`;
     }).join('')
