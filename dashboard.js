@@ -440,11 +440,12 @@ function calcular(rows) {
   const qvMap = {}, probMap = {};
   // Regex para excluir valores demográficos que caem em problema_principal por deslocamento de colunas
   const _demografico = /^(\d+\s+a\s+\d+|mais de \d+|menos de \d+|nasci aqui|de \d+ a|até \d+|prefiro não)/i;
+  const _qvValidos = new Set(['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo']);
   rows.forEach(r => {
     const norm = normalizeRow(r) || r;   // usa campos remapeados quando disponível
     const qv   = norm.qualidade_vida;
     const prob = norm.problema_principal;
-    if (qv)   qvMap[qv]   = (qvMap[qv]   || 0) + 1;
+    if (qv && _qvValidos.has(qv)) qvMap[qv] = (qvMap[qv] || 0) + 1;
     if (prob && !_demografico.test(prob)) probMap[prob] = (probMap[prob] || 0) + 1;
   });
 
