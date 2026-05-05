@@ -384,15 +384,15 @@ function normalizeRow(r) {
   if (!ESCOLA_MAP[idx]) return null;
 
   // Corrige o deslocamento de colunas nas linhas sintéticas:
-  // col saude_atendimento (12) → nota_geral real
-  // col saude_espera      (11) → qualidade_vida real
-  // col edu_creche        (14) → problema_principal real
+  // col saude_espera       (11) → qualidade_vida real
+  // col saude_atendimento  (12) → nota_geral real
+  // col saude_especialistas(13) → problema_principal real
   if (isSintetico) {
     return {
       ...r, _idx: idx,
-      nota_geral:         r.saude_atendimento,
       qualidade_vida:     r.saude_espera,
-      problema_principal: r.edu_creche,
+      nota_geral:         r.saude_atendimento,
+      problema_principal: r.saude_especialistas,
     };
   }
 
@@ -438,9 +438,14 @@ function calcular(rows) {
   });
 
   const qvMap = {}, probMap = {};
+  // Regex para excluir valores demográficos que caem em problema_principal por deslocamento de colunas
+  const _demografico = /^(\d+\s+a\s+\d+|mais de \d+|menos de \d+|nasci aqui|de \d+ a|até \d+|prefiro não)/i;
   rows.forEach(r => {
-    if (r.qualidade_vida)     qvMap[r.qualidade_vida]       = (qvMap[r.qualidade_vida] || 0) + 1;
-    if (r.problema_principal) probMap[r.problema_principal] = (probMap[r.problema_principal] || 0) + 1;
+    const norm = normalizeRow(r) || r;   // usa campos remapeados quando disponível
+    const qv   = norm.qualidade_vida;
+    const prob = norm.problema_principal;
+    if (qv)   qvMap[qv]   = (qvMap[qv]   || 0) + 1;
+    if (prob && !_demografico.test(prob)) probMap[prob] = (probMap[prob] || 0) + 1;
   });
 
   return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, escolasCom: Object.keys(escolaScores).length };
