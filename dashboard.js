@@ -377,9 +377,6 @@ function parseCSV(txt) {
 }
 
 // ── NORMALIZAÇÃO DE SCHEMA ────────────────────────────────────────────────
-// Ponto único de entrada para compatibilidade v1 (lat/lng) e v2 (escola_idx).
-// Retorna a linha enriquecida com _idx, ou null se inválida.
-
 function escolaMaisProxima(lat, lng) {
   // Equirectangular corrigido: compensa a convergência de meridianos em ~23°S.
   const cosLat = Math.cos(lat * Math.PI / 180);
@@ -393,11 +390,53 @@ function escolaMaisProxima(lat, lng) {
   return nearest;
 }
 
+// ── BAIRRO → ESCOLA (fallback quando escola_idx não foi capturado) ─────────
+// Normaliza: lowercase + sem acentos + sem prefixos comuns
+function _normB(s) {
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\b(jardim|vila|parque|bairro|chacara|sitio|residencial|loteamento|nucleo|conjunto)\b/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// Coordenadas aproximadas (centroide) de bairros sem escola homônima
+const _bairroCentroide = {
+  'colonia':         { lat: -23.190, lng: -46.862 },  // Colônia → EE Barão de Jundiaí / área Leste
+  'horto florestal': { lat: -23.175, lng: -46.875 },  // Horto → área Centro-Norte
+  'traviu':          { lat: -23.163, lng: -46.895 },  // Traviú → área Jardim Florestal
+  'bonfiglioli':     { lat: -23.188, lng: -46.930 },  // Bonfiglioli → área Shangai/Bandeirantes
+};
+
+// Cache lazy: bairro normalizado → escola de maior eleitorado (mais representativa)
+let _bairroCache = null;
+function _bairroParaIdx(bairro) {
+  if (!bairro) return NaN;
+  if (!_bairroCache) {
+    _bairroCache = {};
+    [...ESCOLAS].sort((a, b) => b.apt - a.apt).forEach(e => {
+      const k = _normB(e.b);
+      if (_bairroCache[k] === undefined) _bairroCache[k] = e.i;
+    });
+  }
+  const bNorm = _normB(bairro);
+  // 1ª tentativa: match exato (ex: "caxambu" → escola Caxambu)
+  if (_bairroCache[bNorm] !== undefined) return _bairroCache[bNorm];
+  // 2ª tentativa: contenção (ex: "novo horizonte" ⊂ "novo horizonte")
+  const keyMatch = Object.keys(_bairroCache).find(k => k.includes(bNorm) || bNorm.includes(k));
+  if (keyMatch !== undefined) return _bairroCache[keyMatch];
+  // 3ª tentativa: centroide geográfico do bairro
+  const coord = _bairroCentroide[bNorm];
+  if (coord) return escolaMaisProxima(coord.lat, coord.lng);
+  return NaN;
+}
+
 function normalizeRow(r) {
   let idx = parseInt(r.escola_idx);
 
-  if (isNaN(idx)) return null;
-  if (!ESCOLA_MAP[idx]) return null;
+  // Fallback: mapeia pelo nome do bairro respondido no formulário
+  if (isNaN(idx)) idx = _bairroParaIdx(r.bairro);
+
+  if (isNaN(idx) || !ESCOLA_MAP[idx]) return null;
 
   return { ...r, _idx: idx };
 }
