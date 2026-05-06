@@ -598,11 +598,14 @@ function render(m) {
   const semResp = ESCOLAS.filter(e => !m.escolaScores[e.i] || m.escolaScores[e.i].n === 0);
   const escolasVisiveis = _soComDados ? comResp : [...comResp, ...semResp];
 
-  // Atualiza label do botão de filtro
+  // Atualiza label do botão de filtro (mostra a ação, não o estado atual)
   const btnFiltro = document.getElementById('btn-filtro-escolas');
   if (btnFiltro) {
-    btnFiltro.textContent = _soComDados ? `Só com dados (${comResp.length})` : `Todas (${ESCOLAS.length})`;
-    btnFiltro.style.opacity = _soComDados ? '1' : '.6';
+    btnFiltro.textContent = _soComDados
+      ? `Todas as escolas (${ESCOLAS.length})`
+      : `Só com dados (${comResp.length})`;
+    btnFiltro.style.fontWeight = _soComDados ? '700' : '';
+    btnFiltro.style.borderColor = _soComDados ? 'var(--verde)' : '';
   }
 
   document.getElementById('escolas-grid-content').innerHTML = `<div class="escolas-grid">${
