@@ -395,38 +395,9 @@ function escolaMaisProxima(lat, lng) {
 
 function normalizeRow(r) {
   let idx = parseInt(r.escola_idx);
-  let isSintetico = false;
 
-  // Fallback: bairro numérico → linha sintética do script de teste.
-  // O Apps Script gravou os campos na ordem das chaves do payload Python,
-  // deslocando todos os valores em relação às colunas do sheet.
-  if (isNaN(idx)) {
-    const bIdx = parseInt(r.bairro);
-    if (!isNaN(bIdx) && ESCOLA_MAP[bIdx]) { idx = bIdx; isSintetico = true; }
-  }
-
-  if (isNaN(idx)) {
-    // Schema v1: coordenada com vírgula decimal (pt-BR)
-    const lat = parseFloat((r.lat || '').replace(',', '.'));
-    const lng = parseFloat((r.lng || '').replace(',', '.'));
-    if (isNaN(lat) || isNaN(lng)) return null;
-    idx = escolaMaisProxima(lat, lng);
-  }
-
+  if (isNaN(idx)) return null;
   if (!ESCOLA_MAP[idx]) return null;
-
-  // Corrige o deslocamento de colunas nas linhas sintéticas:
-  // col saude_espera       (11) → qualidade_vida real
-  // col saude_atendimento  (12) → nota_geral real
-  // col saude_especialistas(13) → problema_principal real
-  if (isSintetico) {
-    return {
-      ...r, _idx: idx,
-      qualidade_vida:     r.saude_espera,
-      nota_geral:         r.saude_atendimento,
-      problema_principal: r.saude_especialistas,
-    };
-  }
 
   return { ...r, _idx: idx };
 }
@@ -470,15 +441,15 @@ function calcular(rows) {
   });
 
   const qvMap = {}, probMap = {};
-  // Regex para excluir valores demográficos que caem em problema_principal por deslocamento de colunas
-  const _demografico = /^(\d+\s+a\s+\d+|mais de \d+|menos de \d+|nasci aqui|de \d+ a|até \d+|prefiro não)/i;
   const _qvValidos = new Set(['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo']);
+  // Alias para rótulos do formulário v1 (feminino → masculino canônico)
+  const _qvAlias = { 'Muito boa': 'Ótimo', 'Boa': 'Bom', 'Péssima': 'Péssimo', 'Muito ruim': 'Péssimo' };
   rows.forEach(r => {
-    const norm = normalizeRow(r) || r;   // usa campos remapeados quando disponível
-    const qv   = norm.qualidade_vida;
+    const norm = normalizeRow(r) || r;
+    const qv   = _qvAlias[norm.qualidade_vida] || norm.qualidade_vida;
     const prob = norm.problema_principal;
     if (qv && _qvValidos.has(qv)) qvMap[qv] = (qvMap[qv] || 0) + 1;
-    if (prob && !_demografico.test(prob)) probMap[prob] = (probMap[prob] || 0) + 1;
+    if (prob) probMap[prob] = (probMap[prob] || 0) + 1;
   });
 
   return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, escolasCom: Object.keys(escolaScores).length };
