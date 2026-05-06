@@ -479,7 +479,7 @@ function calcular(rows) {
     temaScores[t.id] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   });
 
-  const qvMap = {}, probMap = {};
+  const qvMap = {}, probMap = {}, perspMap = {}, recomMap = {};
   const _qvValidos = new Set(['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo']);
   // Alias para rótulos do formulário v1 (feminino → masculino canônico)
   const _qvAlias = { 'Muito boa': 'Ótimo', 'Boa': 'Bom', 'Péssima': 'Péssimo', 'Muito ruim': 'Péssimo' };
@@ -489,14 +489,17 @@ function calcular(rows) {
     const prob = norm.problema_principal;
     if (qv && _qvValidos.has(qv)) qvMap[qv] = (qvMap[qv] || 0) + 1;
     if (prob) probMap[prob] = (probMap[prob] || 0) + 1;
+    if (r.perspectiva) perspMap[r.perspectiva] = (perspMap[r.perspectiva] || 0) + 1;
+    if (r.recomendaria) recomMap[r.recomendaria] = (recomMap[r.recomendaria] || 0) + 1;
   });
 
-  return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, escolasCom: Object.keys(escolaScores).length };
+  return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, perspMap, recomMap, escolasCom: Object.keys(escolaScores).length };
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────
 
 function render(m) {
+  _ultimoMetrics = m;              // cache para re-render no toggle de escolas
   _escolaScores = m.escolaScores; // atualiza estado módulo-local
 
   // Remove skeleton na primeira carga com dados
@@ -510,9 +513,7 @@ function render(m) {
 
   const probs = Object.entries(m.probMap).sort((a, b) => b[1] - a[1]);
   if (probs.length) {
-    const probLabel = probs[0][0].split('(')[0].trim();
-    const probShort = probLabel.split(' ').slice(0, 2).join(' ');
-    document.getElementById('m-prob').textContent     = probShort.length > 18 ? probShort.slice(0, 16) + '…' : probShort;
+    document.getElementById('m-prob').textContent     = probs[0][0].split('(')[0].trim();
     document.getElementById('m-prob-pct').textContent = ((probs[0][1] / m.total) * 100).toFixed(0) + '% citam como nº1';
   }
 
@@ -563,14 +564,49 @@ function render(m) {
       <div class="prob-pct">${((qtd / pTot) * 100).toFixed(0)}%</div>
     </div>`).join('');
 
+  // Perspectiva e Recomendaria
+  const perspOrdem = ['Muito otimista', 'Otimista', 'Neutro', 'Pessimista', 'Muito pessimista'];
+  const perspCores = ['#00E5A0', '#5DB8FF', '#7B95B8', '#FF8A3D', '#FF4D6D'];
+  const perspTot   = Object.values(m.perspMap).reduce((a, b) => a + b, 0) || 1;
+  const perspEl    = document.getElementById('perspectiva-content');
+  if (perspEl) perspEl.innerHTML = perspOrdem.filter(l => m.perspMap[l]).map((l, i) => {
+    const q = m.perspMap[l] || 0, p = ((q / perspTot) * 100).toFixed(1);
+    return `<div class="dist-row">
+      <div class="dist-label">${l}</div>
+      <div class="dist-barra"><div class="dist-fill" style="width:${p}%;background:${perspCores[i]}"><span>${q > 0 ? q : ''}</span></div></div>
+      <div class="dist-pct">${p}%</div>
+    </div>`;
+  }).join('') || '<div class="sem-dados">Sem dados</div>';
+
+  const recomOrdem = ['Com certeza sim', 'Provavelmente sim', 'Indiferente', 'Provavelmente não', 'Definitivamente não'];
+  const recomCores = ['#00E5A0', '#5DB8FF', '#7B95B8', '#FF8A3D', '#FF4D6D'];
+  const recomTot   = Object.values(m.recomMap).reduce((a, b) => a + b, 0) || 1;
+  const recomEl    = document.getElementById('recomendaria-content');
+  if (recomEl) recomEl.innerHTML = recomOrdem.filter(l => m.recomMap[l]).map((l, i) => {
+    const q = m.recomMap[l] || 0, p = ((q / recomTot) * 100).toFixed(1);
+    return `<div class="dist-row">
+      <div class="dist-label">${l}</div>
+      <div class="dist-barra"><div class="dist-fill" style="width:${p}%;background:${recomCores[i]}"><span>${q > 0 ? q : ''}</span></div></div>
+      <div class="dist-pct">${p}%</div>
+    </div>`;
+  }).join('') || '<div class="sem-dados">Sem dados</div>';
+
   // Grid 91 escolas — e.n e e.b são dados estáticos
   const comResp = ESCOLAS
     .filter(e => m.escolaScores[e.i] && m.escolaScores[e.i].n > 0)
     .sort((a, b) => (m.escolaScores[b.i]?.iapPonderado || 0) - (m.escolaScores[a.i]?.iapPonderado || 0));
   const semResp = ESCOLAS.filter(e => !m.escolaScores[e.i] || m.escolaScores[e.i].n === 0);
+  const escolasVisiveis = _soComDados ? comResp : [...comResp, ...semResp];
+
+  // Atualiza label do botão de filtro
+  const btnFiltro = document.getElementById('btn-filtro-escolas');
+  if (btnFiltro) {
+    btnFiltro.textContent = _soComDados ? `Só com dados (${comResp.length})` : `Todas (${ESCOLAS.length})`;
+    btnFiltro.style.opacity = _soComDados ? '1' : '.6';
+  }
 
   document.getElementById('escolas-grid-content').innerHTML = `<div class="escolas-grid">${
-    [...comResp, ...semResp].map(e => {
+    escolasVisiveis.map(e => {
       const s       = m.escolaScores[e.i];
       const temDado = s && s.n > 0;
       const iap     = temDado ? s.iapPonderado : null;
@@ -590,6 +626,16 @@ function render(m) {
 
   atualizarVisualizacaoMapa();
 }
+
+// ── TOGGLE ESCOLAS ────────────────────────────────────────────────────────
+
+let _soComDados = false;
+let _ultimoMetrics = null;  // guarda último resultado de calcular() para re-render sem refetch
+
+window.toggleFiltroEscolas = function () {
+  _soComDados = !_soComDados;
+  if (_ultimoMetrics) render(_ultimoMetrics);
+};
 
 // ── POLLING ───────────────────────────────────────────────────────────────
 
