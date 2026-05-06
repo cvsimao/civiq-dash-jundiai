@@ -1,5 +1,8 @@
-// dashboard.js — Civiq Jundiaí
-// Pós-revisão técnica: confiabilidade, segurança, manutenção (2026-05)
+// dashboard.js — Civiq Jundiaí v1.1
+// Encapsulado em IIFE: nenhuma variável ou função vaza para window.*
+// Exceções deliberadas: setMapMode e avisoBaixaAmostra (usados via onclick no HTML).
+;(function () {
+'use strict';
 
 // ── CONSTANTES ────────────────────────────────────────────────────────────
 
@@ -601,7 +604,17 @@ async function carregar() {
     if (hash !== _lastHash) {
       _lastHash = hash;
       const rows = parseCSV(txt);
-      if (rows.length > 0) render(calcular(rows));
+      if (rows.length > 0) {
+        render(calcular(rows));
+      } else {
+        // Sheet existe mas não tem respostas ainda
+        document.querySelectorAll('.metrica-valor.skeleton,.metrica-sub.skeleton')
+          .forEach(el => el.classList.remove('skeleton'));
+        ['dist-content','prob-content','temas-content','escolas-grid-content'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = '<div class="sem-dados">Nenhuma resposta coletada ainda.<br>Compartilhe o formulário para começar.</div>';
+        });
+      }
     }
 
     elStatus.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -611,6 +624,15 @@ async function carregar() {
     console.error('Civiq: falha ao carregar dados', err);
     elStatus.textContent = '⚠ Falha ao carregar — tentando em 30s';
     elStatus.style.color = 'var(--vermelho)';
+    // Mostra estado de erro nos cards se ainda estiverem no skeleton
+    if (_lastHash === 0) {
+      ['dist-content','prob-content','temas-content','escolas-grid-content'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.querySelector('.loading-spin')) {
+          el.innerHTML = '<div class="erro-dados"><strong>⚠</strong>Não foi possível carregar os dados.<br>Verifique a conexão e tente novamente.</div>';
+        }
+      });
+    }
   } finally {
     // Garante reset mesmo em exceção inesperada — sem polling travado para sempre
     carregando = false;
@@ -628,3 +650,8 @@ setInterval(carregar, POLL_MS);
 
 // Recarrega imediatamente ao voltar à aba após background
 document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
+
+// Expõe para o HTML via onclick (único ponto de saída intencional do IIFE)
+window.carregar        = carregar;
+
+})(); // fim do IIFE — nenhuma variável interna visível em window.*
