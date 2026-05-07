@@ -1,4 +1,5 @@
-// dashboard.js — Civiq Jundiaí v1.1
+// dashboard.js — Civiq Jundiaí v1.2
+// Fonte de dados: /api/resultados (D1 live) — substitui CSV do Google Sheets.
 // Encapsulado em IIFE: nenhuma variável ou função vaza para window.*
 // Exceções deliberadas: setMapMode e avisoBaixaAmostra (usados via onclick no HTML).
 ;(function () {
@@ -6,9 +7,8 @@
 
 // ── CONSTANTES ────────────────────────────────────────────────────────────
 
-const SHEET_ID  = '10N2pNmLP0eWKjuY1NySq4zMhfBz57E6YpweAQS92am4';
-const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
-const POLL_MS   = 30000;
+const API_URL  = 'https://civiq.com.br/api/resultados';
+const POLL_MS  = 30000;
 
 // ── DADOS ESTÁTICOS ───────────────────────────────────────────────────────
 
@@ -356,144 +356,27 @@ function popupEscola(e, s) {
 <div class="popup-sub">⚖ ${e.apt.toLocaleString('pt-BR')} eleitores aptos · ${s.n} resp.</div>`;
 }
 
-// ── PARSE CSV ─────────────────────────────────────────────────────────────
+// ── API → METRICS ─────────────────────────────────────────────────────────
+// Converte o JSON de /api/resultados para o shape que render() espera.
+// Mantém a mesma interface para que render() não precise mudar.
 
-function parseCSV(txt) {
-  // Normaliza \r\n (Windows) e \r (Mac antigo) para \n antes de processar.
-  const linhas = txt.replace(/\r/g, '').trim().split('\n');
-  const header = linhas[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  return linhas.slice(1).map(linha => {
-    const vals = [];
-    let cur = '', inQ = false;
-    for (let i = 0; i < linha.length; i++) {
-      const c = linha[i];
-      if (c === '"') { inQ = !inQ; } else if (c === ',' && !inQ) { vals.push(cur); cur = ''; } else { cur += c; }
-    }
-    vals.push(cur);
-    const obj = {};
-    header.forEach((h, i) => { obj[h] = (vals[i] ?? '').replace(/"/g, '').trim(); });
-    return obj;
-  }).filter(r => r.timestamp && r.timestamp.length > 0);
-}
-
-// ── NORMALIZAÇÃO DE SCHEMA ────────────────────────────────────────────────
-function escolaMaisProxima(lat, lng) {
-  // Equirectangular corrigido: compensa a convergência de meridianos em ~23°S.
-  const cosLat = Math.cos(lat * Math.PI / 180);
-  let minD = Infinity, nearest = null;
-  ESCOLAS.forEach(e => {
-    const dlat = e.lat - lat;
-    const dlng = (e.lng - lng) * cosLat;
-    const d = dlat * dlat + dlng * dlng;
-    if (d < minD) { minD = d; nearest = e.i; }
-  });
-  return nearest;
-}
-
-// ── BAIRRO → ESCOLA (fallback quando escola_idx não foi capturado) ─────────
-// Normaliza: lowercase + sem acentos + sem prefixos comuns
-function _normB(s) {
-  return s.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/\b(jardim|vila|parque|bairro|chacara|sitio|residencial|loteamento|nucleo|conjunto)\b/g, '')
-    .replace(/\s+/g, ' ').trim();
-}
-
-// Coordenadas aproximadas (centroide) de bairros sem escola homônima
-const _bairroCentroide = {
-  'colonia':         { lat: -23.190, lng: -46.862 },  // Colônia → EE Barão de Jundiaí / área Leste
-  'horto florestal': { lat: -23.175, lng: -46.875 },  // Horto → área Centro-Norte
-  'traviu':          { lat: -23.163, lng: -46.895 },  // Traviú → área Jardim Florestal
-  'bonfiglioli':     { lat: -23.188, lng: -46.930 },  // Bonfiglioli → área Shangai/Bandeirantes
-};
-
-// Cache lazy: bairro normalizado → escola de maior eleitorado (mais representativa)
-let _bairroCache = null;
-function _bairroParaIdx(bairro) {
-  if (!bairro) return NaN;
-  if (!_bairroCache) {
-    _bairroCache = {};
-    [...ESCOLAS].sort((a, b) => b.apt - a.apt).forEach(e => {
-      const k = _normB(e.b);
-      if (_bairroCache[k] === undefined) _bairroCache[k] = e.i;
-    });
-  }
-  const bNorm = _normB(bairro);
-  // 1ª tentativa: match exato (ex: "caxambu" → escola Caxambu)
-  if (_bairroCache[bNorm] !== undefined) return _bairroCache[bNorm];
-  // 2ª tentativa: contenção (ex: "novo horizonte" ⊂ "novo horizonte")
-  const keyMatch = Object.keys(_bairroCache).find(k => k.includes(bNorm) || bNorm.includes(k));
-  if (keyMatch !== undefined) return _bairroCache[keyMatch];
-  // 3ª tentativa: centroide geográfico do bairro
-  const coord = _bairroCentroide[bNorm];
-  if (coord) return escolaMaisProxima(coord.lat, coord.lng);
-  return NaN;
-}
-
-function normalizeRow(r) {
-  let idx = parseInt(r.escola_idx);
-
-  // Fallback: mapeia pelo nome do bairro respondido no formulário
-  if (isNaN(idx)) idx = _bairroParaIdx(r.bairro);
-
-  if (isNaN(idx) || !ESCOLA_MAP[idx]) return null;
-
-  return { ...r, _idx: idx };
-}
-
-// ── CÁLCULO ───────────────────────────────────────────────────────────────
-
-function calcular(rows) {
-  const total = rows.length;
-  const escolaData = {};
-
-  rows.forEach(r => {
-    const norm = normalizeRow(r);
-    if (!norm) return;
-    const idx  = norm._idx;
-    const nota = parseFloat(norm.nota_geral);
-    if (!escolaData[idx]) escolaData[idx] = { notas: [], apt: ESCOLA_MAP[idx].apt, n: 0 };
-    escolaData[idx].n++;
-    if (!isNaN(nota)) escolaData[idx].notas.push(nota);
-  });
-
-  const escolaScores = {};
-  Object.entries(escolaData).forEach(([idx, d]) => {
-    const med = d.notas.length ? d.notas.reduce((a, b) => a + b, 0) / d.notas.length : null;
-    escolaScores[idx] = { iapPonderado: med, n: d.n, apt: d.apt };
-  });
-
-  let somaNotaApt = 0, somaApt = 0;
-  Object.entries(escolaScores).forEach(([idx, s]) => {
-    if (s.iapPonderado == null) return;
-    const e = ESCOLA_MAP[idx];
-    somaNotaApt += s.iapPonderado * e.apt;
-    somaApt     += e.apt;
-  });
-  const iapGeral = somaApt > 0 ? somaNotaApt / somaApt : 0;
-
+function apiToMetrics(data) {
+  // temaScores: a API ainda não captura Likert por tema — retorna null para todos.
+  // O render mostra '—' para scores nulos, que é honesto.
   const temaScores = {};
-  TEMAS.forEach(t => {
-    const vals = [];
-    rows.forEach(r => { t.cols.forEach(col => { const v = LIKERT[r[col]]; if (v != null) vals.push(v); }); });
-    temaScores[t.id] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  });
+  TEMAS.forEach(t => { temaScores[t.id] = null; });
 
-  const qvMap = {}, probMap = {}, perspMap = {}, recomMap = {};
-  const _qvValidos = new Set(['Ótimo', 'Bom', 'Regular', 'Ruim', 'Péssimo']);
-  // Alias para rótulos do formulário v1 (feminino → masculino canônico)
-  const _qvAlias = { 'Muito boa': 'Ótimo', 'Boa': 'Bom', 'Péssima': 'Péssimo', 'Muito ruim': 'Péssimo' };
-  rows.forEach(r => {
-    const norm = normalizeRow(r) || r;
-    const qv   = _qvAlias[norm.qualidade_vida] || norm.qualidade_vida;
-    const prob = norm.problema_principal;
-    if (qv && _qvValidos.has(qv)) qvMap[qv] = (qvMap[qv] || 0) + 1;
-    if (prob) probMap[prob] = (probMap[prob] || 0) + 1;
-    if (r.perspectiva) perspMap[r.perspectiva] = (perspMap[r.perspectiva] || 0) + 1;
-    if (r.recomendaria) recomMap[r.recomendaria] = (recomMap[r.recomendaria] || 0) + 1;
-  });
-
-  return { total, iapGeral, escolaScores, temaScores, qvMap, probMap, perspMap, recomMap, escolasCom: Object.keys(escolaScores).length };
+  return {
+    total:        data.total,
+    iapGeral:     data.iap_geral ?? 0,
+    escolasCom:   data.escolas_com,
+    escolaScores: data.escolas,           // { idx: { iapPonderado, n, apt } }
+    temaScores,
+    qvMap:        data.distribuicoes.qualidade_vida,
+    probMap:      data.distribuicoes.maior_problema,
+    perspMap:     data.distribuicoes.perspectiva,
+    recomMap:     data.distribuicoes.recomendaria,
+  };
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────
@@ -654,19 +537,18 @@ async function carregar() {
 
   const elStatus = document.getElementById('atualizado');
   try {
-    const resp = await fetch(`${CSV_URL}&nocache=${Date.now()}`);
+    const resp = await fetch(`${API_URL}?nocache=${Date.now()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const txt  = await resp.text();
+    const data = await resp.json();
 
     // Só re-renderiza se os dados mudaram — evita reconstruir 91 nós DOM a cada 30s
-    const hash = _hash(txt);
+    const hash = _hash(JSON.stringify(data));
     if (hash !== _lastHash) {
       _lastHash = hash;
-      const rows = parseCSV(txt);
-      if (rows.length > 0) {
-        render(calcular(rows));
+      if (data.total > 0) {
+        render(apiToMetrics(data));
       } else {
-        // Sheet existe mas não tem respostas ainda
+        // API respondeu mas ainda não há respostas
         document.querySelectorAll('.metrica-valor.skeleton,.metrica-sub.skeleton')
           .forEach(el => el.classList.remove('skeleton'));
         ['dist-content','prob-content','temas-content','escolas-grid-content'].forEach(id => {
